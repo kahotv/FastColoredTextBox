@@ -12,3 +12,13 @@ It has such settings as foreground color, font style, background color which can
 More details http://www.codeproject.com/Articles/161871/Fast-Colored-TextBox-for-syntax-highlighting
 
 Nuget package https://www.nuget.org/packages/FCTB/
+
+选择测试
+
+# Change
+
+Modify https://github.com/duanxingji/FastColoredTextBox
+
+- Fix Unicode Encode
+
+![Fast Colored TextBox](pic/Snipaste_2020-11-26_00-07-28.png)
