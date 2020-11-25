@@ -115,7 +115,6 @@ namespace FastColoredTextBoxNS
             this.FontStyle = fontStyle;
             stringFormat = new StringFormat(StringFormatFlags.MeasureTrailingSpaces);
         }
-
         public override void Draw(Graphics gr, Point position, Range range)
         {
             //draw background
@@ -126,6 +125,7 @@ namespace FastColoredTextBoxNS
             {
                 Line line = range.tb[range.Start.iLine];
                 float dx = range.tb.CharWidth;
+                float dxu = range.tb.CharUnicodeWidth;
                 float y = position.Y + range.tb.LineInterval/2;
                 float x = position.X - range.tb.CharWidth/3;
 
@@ -145,7 +145,7 @@ namespace FastColoredTextBoxNS
                         gr.ScaleTransform(k, (float) Math.Sqrt(k));
                         gr.DrawString(line[i].c.ToString(), f, ForeBrush, 0, 0, stringFormat);
                         gr.Restore(gs);
-                        x += dx;
+                        x += line[i].c > 0xFF ? dxu : dx;
                     }
                 }
                 else
@@ -155,7 +155,7 @@ namespace FastColoredTextBoxNS
                     {
                         //draw char
                         gr.DrawString(line[i].c.ToString(), f, ForeBrush, x, y, stringFormat);
-                        x += dx;
+                        x += line[i].c > 0xFF ? dxu : dx;
                     }
                 }
             }
@@ -276,7 +276,15 @@ namespace FastColoredTextBoxNS
             if (BackgroundBrush != null)
             {
                 gr.SmoothingMode = SmoothingMode.None;
-                var rect = new Rectangle(position.X, position.Y, (range.End.iChar - range.Start.iChar) * range.tb.CharWidth, range.tb.CharHeight);
+                int x = 0;
+                int dx = range.tb.CharWidth;
+                int dxu = range.tb.CharUnicodeWidth;
+                foreach (var c in range.Text)
+                {
+                    x += c > 0xff ? dxu : dx;
+                }
+
+                var rect = new Rectangle(position.X, position.Y, x, range.tb.CharHeight);
                 if (rect.Width == 0)
                     return;
                 gr.FillRectangle(BackgroundBrush, rect);

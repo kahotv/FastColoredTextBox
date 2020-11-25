@@ -511,6 +511,9 @@ namespace FastColoredTextBoxNS
         [Browsable(false)]
         public int CharWidth { get; set; }
 
+        [Browsable(false)]
+        public int CharUnicodeWidth { get; set; }
+
         /// <summary>
         /// Spaces count for tab
         /// </summary>
@@ -1536,6 +1539,7 @@ namespace FastColoredTextBoxNS
             //clac size
             SizeF size = GetCharSize(BaseFont, 'M');
             CharWidth = (int) Math.Round(size.Width*1f /*0.85*/) - 1 /*0*/;
+            CharUnicodeWidth = (int)Math.Round(GetCharSize(BaseFont, '中').Width * 1f /*0.85*/) - 1 /*0*/;
             CharHeight = lineInterval + (int) Math.Round(size.Height*1f /*0.9*/) - 1 /*0*/;
             //
             //if (wordWrap)
@@ -5378,6 +5382,15 @@ namespace FastColoredTextBoxNS
                     }
         }
 
+        class LnInfo
+        {
+            public int startX;
+            public int y;
+            public int from;
+            public int to;
+            public StyleIndex style;
+        }
+
         private void DrawLineChars(Graphics gr, int firstChar, int lastChar, int iLine, int iWordWrapLine, int startX,
                                    int y)
         {
@@ -5394,42 +5407,79 @@ namespace FastColoredTextBoxNS
             if (lineInfo.VisibleState == VisibleState.StartOfHiddenBlock)
             {
                 //rendering by FoldedBlockStyle
-                FoldedBlockStyle.Draw(gr, new Point(startX + firstChar*CharWidth, y),
+                FoldedBlockStyle.Draw(gr, new Point(startX + firstChar * CharWidth, y),
                                       new Range(this, from + firstChar, iLine, from + lastChar + 1, iLine));
             }
             else
             {
                 //render by custom styles
-                StyleIndex currentStyleIndex = StyleIndex.None;
-                int iLastFlushedChar = firstChar - 1;
+                var currentStyle = StyleIndex.None;
+                var iLastFlushedChar = firstChar - 1;
 
-                for (int iChar = firstChar; iChar <= lastChar; iChar++)
+                var list = new List<LnInfo>();
+                var fx = 0;
+                for (var i = firstChar; i <= lastChar; i++)
                 {
-                    StyleIndex style = line[from + iChar].style;
-                    if (currentStyleIndex != style)
+                    var iChar = line[from + i];
+                    var style = iChar.style;
+
+                    //第一行时 添加一条数据
+                    if (i == firstChar)
                     {
-                        FlushRendering(gr, currentStyleIndex,
-                                       new Point(startX + (iLastFlushedChar + 1)*CharWidth, y),
-                                       new Range(this, from + iLastFlushedChar + 1, iLine, from + iChar, iLine));
-                        iLastFlushedChar = iChar - 1;
-                        currentStyleIndex = style;
+                        currentStyle = style;
+                        fx = startX;
+                        list.Add(new LnInfo
+                        {
+                            from = from + i,
+                            to = from + i + 1,
+                            style = currentStyle,
+                            startX = fx,
+                            y = y
+                        });
                     }
+                    else if (currentStyle != style)
+                    {
+                        currentStyle = style;
+                        list.Add(new LnInfo
+                        {
+                            from = from + i,
+                            to = from + i + 1,
+                            style = currentStyle,
+                            startX = fx,
+                            y = y
+                        });
+                    }
+                    else
+                    {
+                        list[list.Count - 1].to += 1;
+                    }
+                    fx += iChar.c > 0xFF ? CharUnicodeWidth : CharWidth;
                 }
-                FlushRendering(gr, currentStyleIndex, new Point(startX + (iLastFlushedChar + 1)*CharWidth, y),
-                               new Range(this, from + iLastFlushedChar + 1, iLine, from + lastChar + 1, iLine));
+
+                foreach (var item in list)
+                {
+                    FlushRendering(gr, item.style, 
+                        new Point(item.startX, item.y), 
+                        new Range(this, item.from, iLine, item.to, iLine));
+                }
             }
 
             //draw selection
-            if (SelectionHighlightingForLineBreaksEnabled  && iWordWrapLine == lineInfo.WordWrapStringsCount - 1) lastChar++;//draw selection for CR
+            if (SelectionHighlightingForLineBreaksEnabled && iWordWrapLine == lineInfo.WordWrapStringsCount - 1) lastChar++;//draw selection for CR
             if (!Selection.IsEmpty && lastChar >= firstChar)
             {
                 gr.SmoothingMode = SmoothingMode.None;
                 var textRange = new Range(this, from + firstChar, iLine, from + lastChar + 1, iLine);
                 textRange = Selection.GetIntersectionWith(textRange);
-                if (textRange != null && SelectionStyle != null)
+                if (textRange != null && SelectionStyle != null && !string.IsNullOrEmpty(textRange.Text))
                 {
-                    SelectionStyle.Draw(gr, new Point(startX + (textRange.Start.iChar - from)*CharWidth, 1 + y),
-                                        textRange);
+                    int x = 0;
+                    for(int i = from;i < textRange.Start.iChar; i++)
+                    {
+                        x +=line.Text[i] > 0xFF ? CharUnicodeWidth : CharWidth;
+                    }
+
+                    SelectionStyle.Draw(gr, new Point((startX + x), 1 + y), textRange);
                 }
             }
         }
@@ -5932,7 +5982,28 @@ namespace FastColoredTextBoxNS
             //
             int start = LineInfos[iLine].GetWordWrapStringStartPosition(iWordWrapLine);
             int finish = LineInfos[iLine].GetWordWrapStringFinishPosition(iWordWrapLine, lines[iLine]);
-            var x = (int) Math.Round((float) point.X/CharWidth);
+            //var x = (int) Math.Round((float) point.X/CharWidth);
+#if debug
+            Console.WriteLine($"start: {start} finish: {finish}");
+#endif
+            var x = 0;
+            var nx = 0;
+            var txt = lines[iLine].Text;
+
+            for (int i = 0, sum = txt.Length; i < sum; i++)
+            {
+                if (nx < point.X)
+                {
+                    nx += txt[i] > 0xff ? CharUnicodeWidth : CharWidth;
+                    x++;
+                    continue;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
             if (iWordWrapLine > 0)
                 x -= LineInfos[iLine].wordWrapIndent;
 
@@ -6283,7 +6354,20 @@ namespace FastColoredTextBoxNS
             //
             int iWordWrapIndex = LineInfos[place.iLine].GetWordWrapStringIndex(place.iChar);
             y += iWordWrapIndex*CharHeight;
-            int x = (place.iChar - LineInfos[place.iLine].GetWordWrapStringStartPosition(iWordWrapIndex))*CharWidth;
+            //int x = (place.iChar - LineInfos[place.iLine].GetWordWrapStringStartPosition(iWordWrapIndex))*CharWidth;
+
+            var startX = LineInfos[place.iLine].GetWordWrapStringStartPosition(iWordWrapIndex);
+            var txt = lines[place.iLine].Text;
+            var x = 0;
+            if (txt.Length > 0)
+            {
+                while (startX < place.iChar)
+                {
+                    x += txt[startX] > 0xFF ? CharUnicodeWidth : CharWidth;
+                    startX++;
+                }
+            }
+
             if(iWordWrapIndex > 0 )
                 x += LineInfos[place.iLine].wordWrapIndent * CharWidth;
             //

@@ -227,11 +227,11 @@ namespace FastColoredTextBoxNS
 
         public override CompareResult Compare(string fragmentText)
         {
-            int i = fragmentText.LastIndexOf('.');
-            if (i < 0)
-                return CompareResult.Hidden;
-            string lastPart = fragmentText.Substring(i + 1);
-            firstPart = fragmentText.Substring(0, i);
+            int i = fragmentText.LastIndexOf(' ');
+            if (fragmentText=="")
+            return CompareResult.Hidden;
+            string lastPart = fragmentText;
+            firstPart = fragmentText;
 
             if(lastPart=="") return CompareResult.Visible;
             if(Text.StartsWith(lastPart, StringComparison.InvariantCultureIgnoreCase))
@@ -244,7 +244,7 @@ namespace FastColoredTextBoxNS
 
         public override string GetTextForReplace()
         {
-            return firstPart + "." + Text;
+            return Text;
         }
     }
 
